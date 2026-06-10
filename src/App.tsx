@@ -160,7 +160,7 @@ const stocktwitsUrl =
 const haltsUrl = "/halts/rss.aspx?feed=tradehalts"
 const haltsPageUrl = "/halts/Trader.aspx?id=TradeHalts"
 const adsenseClient = "ca-pub-7088196909984917"
-const defaultAdsenseSlot = import.meta.env.VITE_ADSENSE_SLOT_DEFAULT as string | undefined
+const defaultAdsenseSlot = (import.meta.env.VITE_ADSENSE_SLOT_DEFAULT as string | undefined) || "1674078274"
 const adsenseSlots: Partial<Record<string, string | undefined>> = {
   "dashboard-top": import.meta.env.VITE_ADSENSE_SLOT_DASHBOARD_TOP,
   "dashboard-in-feed": import.meta.env.VITE_ADSENSE_SLOT_DASHBOARD_IN_FEED,
