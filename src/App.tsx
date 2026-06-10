@@ -1623,7 +1623,14 @@ async function fetchJson<T>(url: string): Promise<T> {
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`)
   }
-  return response.json() as Promise<T>
+
+  const text = await response.text()
+  const trimmed = text.trimStart()
+  if (trimmed.startsWith("<")) {
+    throw new Error(`Expected JSON from ${url}, but received HTML. Check the production reverse proxy for this route.`)
+  }
+
+  return JSON.parse(text) as T
 }
 
 async function fetchText(url: string): Promise<string> {
