@@ -22,6 +22,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useParams,
 } from "react-router-dom"
 import { Toaster, toast } from "sonner"
 import {
@@ -178,6 +179,8 @@ const adsenseSlots: Partial<Record<string, string | undefined>> = {
   "bid-ask-bottom": import.meta.env.VITE_ADSENSE_SLOT_BID_ASK_BOTTOM,
   "configuration-top": import.meta.env.VITE_ADSENSE_SLOT_CONFIGURATION_TOP,
   "configuration-bottom": import.meta.env.VITE_ADSENSE_SLOT_CONFIGURATION_BOTTOM,
+  "stock-top": import.meta.env.VITE_ADSENSE_SLOT_STOCK_TOP,
+  "stock-bottom": import.meta.env.VITE_ADSENSE_SLOT_STOCK_BOTTOM,
 }
 
 const screens: Screen[] = [
@@ -253,6 +256,15 @@ function getScreenIdFromPath(pathname: string): ScreenId {
   return screens.find((screen) => screen.path === pathname)?.id ?? "dashboard"
 }
 
+function getTickerFromStockPath(pathname: string) {
+  const match = pathname.match(/^\/stock\/([^/?#]+)/i)
+  return match ? normalizeTicker(decodeURIComponent(match[1])) : ""
+}
+
+function normalizeTicker(value?: string) {
+  return (value ?? "").replace(/[^a-z0-9.-]/gi, "").toUpperCase()
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -291,7 +303,13 @@ function RocketScreeners() {
   )
 
   const activeScreen = getScreenIdFromPath(location.pathname)
-  const active = screens.find((screen) => screen.id === activeScreen) ?? screens[0]
+  const routeTicker = getTickerFromStockPath(location.pathname)
+  const active = routeTicker
+    ? {
+        label: `${routeTicker} Stock Monitor`,
+        description: "Dedicated bid/ask-style tracking for this ticker.",
+      }
+    : (screens.find((screen) => screen.id === activeScreen) ?? screens[0])
   const gainers = useMovers("gainers", refreshSeconds)
   const losers = useMovers("losers", refreshSeconds)
   const alerts = useAlerts(refreshSeconds)
@@ -471,6 +489,16 @@ function RocketScreeners() {
               />
             }
             path="/bid-ask"
+          />
+          <Route
+            element={
+              <StockMonitorRoute
+                setLogs={setRequestLogs}
+                sonnerNotificationsEnabled={sonnerNotificationsEnabled}
+                systemNotificationsEnabled={systemNotificationsEnabled}
+              />
+            }
+            path="/stock/:ticker"
           />
           <Route
             element={
@@ -1101,6 +1129,208 @@ function BidAskScreen({
         </div>
       </section>
       <AdSlot format="rectangle" label="bid ask bottom ad" placement="bid-ask-bottom" />
+    </div>
+  )
+}
+
+function StockMonitorRoute({
+  setLogs,
+  sonnerNotificationsEnabled,
+  systemNotificationsEnabled,
+}: {
+  setLogs: Dispatch<SetStateAction<RequestLog[]>>
+  sonnerNotificationsEnabled: boolean
+  systemNotificationsEnabled: boolean
+}) {
+  const params = useParams()
+  const ticker = normalizeTicker(params.ticker)
+
+  if (!ticker) {
+    return <Navigate replace to="/bid-ask" />
+  }
+
+  return (
+    <StockMonitorScreen
+      key={ticker}
+      setLogs={setLogs}
+      sonnerNotificationsEnabled={sonnerNotificationsEnabled}
+      systemNotificationsEnabled={systemNotificationsEnabled}
+      ticker={ticker}
+    />
+  )
+}
+
+function StockMonitorScreen({
+  setLogs,
+  sonnerNotificationsEnabled,
+  systemNotificationsEnabled,
+  ticker,
+}: {
+  setLogs: Dispatch<SetStateAction<RequestLog[]>>
+  sonnerNotificationsEnabled: boolean
+  systemNotificationsEnabled: boolean
+  ticker: string
+}) {
+  const [monitor, setMonitor] = useLocalStorage<BidAskMonitorState>(`rocket.stockMonitor.${ticker}`, {
+    id: 0,
+    draftReference: "",
+    draftSymbol: ticker,
+    history: [],
+    isRunning: false,
+    refreshSeconds: 3,
+    symbol: ticker,
+  })
+  const latest = monitor.history.at(-1)
+  const lastEventRef = useRef("")
+  const updateMonitor = (updates: Partial<BidAskMonitorState>) => {
+    setMonitor((current) => ({ ...current, ...updates }))
+  }
+  const setHistory: Dispatch<SetStateAction<BidAskSnapshot[]>> = (nextHistory) => {
+    setMonitor((current) => ({
+      ...current,
+      history:
+        typeof nextHistory === "function"
+          ? (nextHistory as (history: BidAskSnapshot[]) => BidAskSnapshot[])(current.history)
+          : nextHistory,
+    }))
+  }
+  const query = useBidAskMonitor(
+    monitor.symbol,
+    monitor.reference,
+    monitor.refreshSeconds,
+    setHistory,
+    monitor.isRunning,
+  )
+
+  useQueryLogger(`Stock ${ticker}`, query, setLogs)
+
+  useEffect(() => {
+    if (!query.data || query.data.status === "PRIMER") {
+      return
+    }
+
+    if (query.data.status === "SUBE" || query.data.status === "BAJA" || (query.data.forceIndex ?? 0) > 2) {
+      const eventKey = `${ticker}-${query.data.status}-${Math.trunc(query.data.diffPct ?? 0)}-${Math.trunc(query.data.forceIndex ?? 0)}`
+      if (lastEventRef.current === eventKey) {
+        return
+      }
+
+      lastEventRef.current = eventKey
+      notify(
+        `Stock ${monitor.symbol}`,
+        `${formatBidAskStatus(query.data.status)} ${query.data.diffPct?.toFixed(2) ?? "N/A"}% | Price $${query.data.price.toFixed(2)} | Force ${query.data.forceIndex?.toFixed(2) ?? "N/A"}`,
+        {
+          sonnerEnabled: sonnerNotificationsEnabled,
+          systemEnabled: systemNotificationsEnabled,
+        },
+      )
+    }
+  }, [monitor.symbol, query.data, sonnerNotificationsEnabled, systemNotificationsEnabled, ticker])
+
+  return (
+    <div className="route-stack">
+      <AdSlot format="leaderboard" label={`${ticker} stock monitor top ad`} placement="stock-top" />
+      <section className="panel wide stock-monitor-panel">
+        <PanelTitle
+          title={`${monitor.symbol || ticker} Stock Monitor`}
+          subtitle="Single-ticker monitoring with its own timer, reference price, alerts, and history."
+        />
+        <ScreenStatus error={query.error} isLoading={query.isLoading} />
+
+        <div className="monitor-controls stock-monitor-controls">
+          <label className="field compact">
+            <span>Ticker</span>
+            <input
+              disabled={monitor.isRunning}
+              onChange={(event) => updateMonitor({ draftSymbol: event.target.value.toUpperCase() })}
+              placeholder={ticker}
+              value={monitor.draftSymbol}
+            />
+          </label>
+          <label className="field compact">
+            <span>Optional initial value</span>
+            <input
+              disabled={monitor.isRunning}
+              onChange={(event) => updateMonitor({ draftReference: event.target.value })}
+              placeholder="0.85"
+              value={monitor.draftReference}
+            />
+          </label>
+          <label className="field compact small-field">
+            <span>Refresh</span>
+            <input
+              disabled={monitor.isRunning}
+              min={1}
+              onChange={(event) => updateMonitor({ refreshSeconds: Math.max(1, Number(event.target.value)) })}
+              type="number"
+              value={monitor.refreshSeconds}
+            />
+          </label>
+          <button
+            className={monitor.isRunning ? "danger-action" : "primary-action"}
+            onClick={() => {
+              if (monitor.isRunning) {
+                updateMonitor({ isRunning: false })
+                return
+              }
+
+              const reference = parseMarketNumber(monitor.draftReference)
+              const nextSymbol = normalizeTicker(monitor.draftSymbol) || ticker
+              updateMonitor({
+                history: [],
+                isRunning: true,
+                reference: reference || undefined,
+                symbol: nextSymbol,
+              })
+            }}
+            type="button"
+          >
+            {monitor.isRunning ? "Stop monitoring" : "Start monitoring"}
+          </button>
+          <button className="ghost-action" onClick={() => updateMonitor({ history: [] })} type="button">
+            Clear
+          </button>
+        </div>
+
+        <div className="monitor-summary">
+          <span>Status: {monitor.isRunning ? "Running" : "Stopped"}</span>
+          <span>Timer: {monitor.refreshSeconds}s</span>
+          <span>Price: {latest ? `$${latest.price.toFixed(2)}` : "-"}</span>
+          <span className={latest?.diffPct && latest.diffPct >= 0 ? "positive" : "negative"}>
+            Delta: {latest?.diffPct === undefined ? "-" : `${latest.diffPct.toFixed(2)}%`}
+          </span>
+          <span>Force: {latest?.forceIndex?.toFixed(2) ?? "-"}</span>
+        </div>
+
+        <div className="data-table bidask-table">
+          <div className="table-head">
+            <span>Date/Time</span>
+            <span>Price</span>
+            <span>Delta</span>
+            <span>Status</span>
+            <span>Volume</span>
+            <span>Vol%</span>
+            <span>Force</span>
+          </div>
+          <div className="table-body monitor-body">
+            {[...monitor.history].reverse().map((row, index) => (
+              <div className="table-row" key={`${row.time}-${index}`}>
+                <span>{row.time}</span>
+                <strong>${row.price.toFixed(2)}</strong>
+                <span className={(row.diffPct ?? 0) >= 0 ? "positive" : "negative"}>
+                  {row.diffPct === undefined ? "-" : `${row.diffPct.toFixed(2)}%`}
+                </span>
+                <span className={`state ${row.status.toLowerCase()}`}>{formatBidAskStatus(row.status)}</span>
+                <span>{formatCompact(row.volume)}</span>
+                <span>{row.volumeChangePct === undefined ? "-" : `${row.volumeChangePct.toFixed(1)}%`}</span>
+                <span>{row.forceIndex?.toFixed(2) ?? "-"}</span>
+              </div>
+            ))}
+            {!monitor.history.length && <EmptyInline text="No samples yet. Press Start monitoring." />}
+          </div>
+        </div>
+      </section>
+      <AdSlot format="rectangle" label={`${ticker} stock monitor bottom ad`} placement="stock-bottom" />
     </div>
   )
 }
