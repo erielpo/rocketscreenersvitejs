@@ -33,6 +33,12 @@ import {
 
 import { useTheme } from "@/components/theme-provider"
 
+declare global {
+  interface Window {
+    adsbygoogle?: unknown[]
+  }
+}
+
 type ScreenId =
   | "dashboard"
   | "prealerts"
@@ -152,6 +158,27 @@ const marketMoversUrl = "/nasdaq/api/marketmovers?assetclass=stocks&market=NASDA
 const stocktwitsUrl =
   "/stocktwits/api/2/trending/most_active.json?class=all&limit=100&page_num=1&payloads=qprices"
 const haltsUrl = "/halts/rss.aspx?feed=tradehalts"
+const haltsPageUrl = "/halts/Trader.aspx?id=TradeHalts"
+const adsenseClient = "ca-pub-7088196909984917"
+const defaultAdsenseSlot = import.meta.env.VITE_ADSENSE_SLOT_DEFAULT as string | undefined
+const adsenseSlots: Partial<Record<string, string | undefined>> = {
+  "dashboard-top": import.meta.env.VITE_ADSENSE_SLOT_DASHBOARD_TOP,
+  "dashboard-in-feed": import.meta.env.VITE_ADSENSE_SLOT_DASHBOARD_IN_FEED,
+  "gainers-top": import.meta.env.VITE_ADSENSE_SLOT_GAINERS_TOP,
+  "gainers-bottom": import.meta.env.VITE_ADSENSE_SLOT_GAINERS_BOTTOM,
+  "losers-top": import.meta.env.VITE_ADSENSE_SLOT_LOSERS_TOP,
+  "losers-bottom": import.meta.env.VITE_ADSENSE_SLOT_LOSERS_BOTTOM,
+  "pre-alerts-top": import.meta.env.VITE_ADSENSE_SLOT_PRE_ALERTS_TOP,
+  "pre-alerts-bottom": import.meta.env.VITE_ADSENSE_SLOT_PRE_ALERTS_BOTTOM,
+  "alerts-runner-top": import.meta.env.VITE_ADSENSE_SLOT_ALERTS_RUNNER_TOP,
+  "alerts-runner-bottom": import.meta.env.VITE_ADSENSE_SLOT_ALERTS_RUNNER_BOTTOM,
+  "halts-top": import.meta.env.VITE_ADSENSE_SLOT_HALTS_TOP,
+  "halts-bottom": import.meta.env.VITE_ADSENSE_SLOT_HALTS_BOTTOM,
+  "bid-ask-top": import.meta.env.VITE_ADSENSE_SLOT_BID_ASK_TOP,
+  "bid-ask-bottom": import.meta.env.VITE_ADSENSE_SLOT_BID_ASK_BOTTOM,
+  "configuration-top": import.meta.env.VITE_ADSENSE_SLOT_CONFIGURATION_TOP,
+  "configuration-bottom": import.meta.env.VITE_ADSENSE_SLOT_CONFIGURATION_BOTTOM,
+}
 
 const screens: Screen[] = [
   {
@@ -658,11 +685,39 @@ function AdSlot({
   label: string
   placement: string
 }) {
+  const slotId = adsenseSlots[placement] ?? defaultAdsenseSlot
+
+  useEffect(() => {
+    if (!slotId) {
+      return
+    }
+
+    try {
+      window.adsbygoogle = window.adsbygoogle ?? []
+      window.adsbygoogle.push({})
+    } catch {
+      // AdSense can throw when the slot is already filled during route transitions.
+    }
+  }, [placement, slotId])
+
   return (
     <aside aria-label={label} className={`ad-slot ${format}`} data-ad-placement={placement}>
-      <span>Advertisement</span>
-      <strong>Google AdSense</strong>
-      <small>{placement}</small>
+      {slotId ? (
+        <ins
+          className="adsbygoogle"
+          data-ad-client={adsenseClient}
+          data-ad-format="auto"
+          data-ad-slot={slotId}
+          data-full-width-responsive="true"
+          style={{ display: "block" }}
+        />
+      ) : (
+        <>
+          <span>Advertisement</span>
+          <strong>Google AdSense</strong>
+          <small>{placement}: ad slot id not configured</small>
+        </>
+      )}
     </aside>
   )
 }
@@ -1433,11 +1488,15 @@ function useHalts(refreshSeconds: number): UseQueryResult<HaltRow[], Error> {
     queryKey: ["halts"],
     queryFn: async () => {
       const text = await fetchText(haltsUrl)
+      if (isHtmlResponse(text)) {
+        return fetchHaltsFromNasdaqTraderPage()
+      }
+
       const firstXml = text.search(/<\?xml|<rss/i)
       const cleaned = firstXml > 0 ? text.slice(firstXml) : text
       const doc = new DOMParser().parseFromString(cleaned.trim(), "text/xml")
       if (doc.querySelector("parsererror")) {
-        throw new Error("Unable to read the Nasdaq Trader halts RSS feed.")
+        return fetchHaltsFromNasdaqTraderPage()
       }
 
       return Array.from(doc.querySelectorAll("item"))
@@ -1627,10 +1686,17 @@ async function fetchJson<T>(url: string): Promise<T> {
   const text = await response.text()
   const trimmed = text.trimStart()
   if (trimmed.startsWith("<")) {
-    throw new Error(`Expected JSON from ${url}, but received HTML. Check the production reverse proxy for this route.`)
+    throw new Error(buildUnexpectedResponseError(url, "JSON", text))
   }
 
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch (error) {
+    throw new Error(
+      `Unable to parse JSON from ${url}. ${error instanceof Error ? error.message : "Unknown parse error."}`,
+      { cause: error },
+    )
+  }
 }
 
 async function fetchText(url: string): Promise<string> {
@@ -1639,6 +1705,38 @@ async function fetchText(url: string): Promise<string> {
     throw new Error(`${response.status} ${response.statusText}`)
   }
   return response.text()
+}
+
+async function fetchHaltsFromNasdaqTraderPage(): Promise<HaltRow[]> {
+  const html = await fetchText(haltsPageUrl)
+  if (isIncapsulaBlock(html)) {
+    throw new Error("Nasdaq Trader blocked the halts feed with Incapsula. Try redeploying or use a server IP that Nasdaq Trader allows.")
+  }
+
+  const doc = new DOMParser().parseFromString(html, "text/html")
+  const rows = Array.from(doc.querySelectorAll("table tr"))
+    .map((row) => Array.from(row.querySelectorAll("td")).map((cell) => normalizeText(cell.textContent)))
+    .filter((cells) => cells.length >= 5)
+    .map((cells) => ({
+      haltDate: cells[0] || "-",
+      haltTime: cells[1] || "-",
+      symbol: cells[2] || "-",
+      name: cells[3] || "-",
+      market: cells[4] || "-",
+      reason: cells[5] || "-",
+      resumeTime: cells[7] || cells[6] || "",
+    }))
+    .filter((row) => row.symbol !== "-" && !/symbol|security/i.test(row.symbol))
+
+  if (rows.length) {
+    return rows.slice(0, 80)
+  }
+
+  if (doc.querySelector("#divTradeHaltResults")) {
+    return []
+  }
+
+  throw new Error(buildUnexpectedResponseError(haltsPageUrl, "Nasdaq Trader halts HTML", html))
 }
 
 async function fetchNasdaqSummary(symbol: string) {
@@ -1765,6 +1863,31 @@ function parseMarketNumber(value?: string | number | null) {
   const clean = raw.replace(/[$,%]/g, "").replace(/,/g, "").replace(/[KMB]$/i, "")
   const parsed = Number(clean)
   return Number.isFinite(parsed) ? parsed * multiplier : 0
+}
+
+function normalizeText(value?: string | null) {
+  return (value ?? "").replace(/\s+/g, " ").trim()
+}
+
+function isHtmlResponse(value: string) {
+  return value.trimStart().startsWith("<!doctype") || value.trimStart().startsWith("<html")
+}
+
+function isIncapsulaBlock(value: string) {
+  return /Incapsula|_Incapsula_Resource|Request unsuccessful/i.test(value)
+}
+
+function buildUnexpectedResponseError(url: string, expected: string, body: string) {
+  const preview = normalizeText(body).slice(0, 120)
+  if (isIncapsulaBlock(body)) {
+    return `Expected ${expected} from ${url}, but Nasdaq/security protection returned an Incapsula HTML page.`
+  }
+
+  if (isHtmlResponse(body)) {
+    return `Expected ${expected} from ${url}, but received HTML instead. Preview: ${preview}`
+  }
+
+  return `Expected ${expected} from ${url}, but received an unexpected response. Preview: ${preview}`
 }
 
 function normalizeStocktwitsFloat(value?: string | number) {
