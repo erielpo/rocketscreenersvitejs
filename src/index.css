@@ -476,11 +476,16 @@ h2 {
   text-align: center;
 }
 
-.ad-slot span {
+.ad-slot-label {
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.ad-slot .adsbygoogle {
+  width: 100%;
+  min-height: 70px;
 }
 
 .ad-slot strong {
@@ -492,16 +497,32 @@ h2 {
   font-size: 11px;
 }
 
+.ad-slot-placeholder {
+  color: color-mix(in oklch, var(--muted-foreground), transparent 15%);
+}
+
 .ad-slot.leaderboard {
   min-height: 96px;
+}
+
+.ad-slot.leaderboard .adsbygoogle {
+  min-height: 70px;
 }
 
 .ad-slot.rectangle {
   min-height: 250px;
 }
 
+.ad-slot.rectangle .adsbygoogle {
+  min-height: 220px;
+}
+
 .ad-slot.skyscraper {
   min-height: 600px;
+}
+
+.ad-slot.skyscraper .adsbygoogle {
+  min-height: 560px;
 }
 
 .metric-card.green {

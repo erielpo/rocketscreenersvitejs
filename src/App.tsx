@@ -702,18 +702,21 @@ function AdSlot({
 
   return (
     <aside aria-label={label} className={`ad-slot ${format}`} data-ad-placement={placement}>
+      <span className="ad-slot-label">Advertisement</span>
       {slotId ? (
-        <ins
-          className="adsbygoogle"
-          data-ad-client={adsenseClient}
-          data-ad-format="auto"
-          data-ad-slot={slotId}
-          data-full-width-responsive="true"
-          style={{ display: "block" }}
-        />
+        <>
+          <ins
+            className="adsbygoogle"
+            data-ad-client={adsenseClient}
+            data-ad-format="auto"
+            data-ad-slot={slotId}
+            data-full-width-responsive="true"
+            style={{ display: "block" }}
+          />
+          <small className="ad-slot-placeholder">Ad space reserved</small>
+        </>
       ) : (
         <>
-          <span>Advertisement</span>
           <strong>Google AdSense</strong>
           <small>{placement}: ad slot id not configured</small>
         </>
