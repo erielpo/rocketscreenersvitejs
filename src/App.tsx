@@ -685,7 +685,7 @@ function AdSlot({
   label: string
   placement: string
 }) {
-  const slotId = adsenseSlots[placement] ?? defaultAdsenseSlot
+  const slotId = adsenseSlots[placement] || defaultAdsenseSlot
 
   useEffect(() => {
     if (!slotId) {
