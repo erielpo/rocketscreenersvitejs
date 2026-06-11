@@ -25,6 +25,8 @@ services:
     image: rocketscreenersvitejs:latest
     pull_policy: build
     restart: unless-stopped
+    deploy:
+      replicas: 3
     expose:
       - "80"
     networks:
