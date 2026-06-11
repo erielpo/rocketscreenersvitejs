@@ -1662,6 +1662,7 @@ function useMovers(kind: MoverKind, refreshSeconds: number): UseQueryResult<Move
       return (rows ?? []).slice(0, 10)
     },
     refetchInterval: refreshSeconds * 1000,
+    refetchIntervalInBackground: true,
   })
 }
 
