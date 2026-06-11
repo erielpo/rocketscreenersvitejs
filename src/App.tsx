@@ -11,6 +11,7 @@ import {
   Sun,
   TrendingDown,
   TrendingUp,
+  Volume2,
   X,
   Zap,
 } from "lucide-react"
@@ -45,6 +46,7 @@ type ScreenId =
   | "prealerts"
   | "alerta"
   | "gainers"
+  | "volumegainers"
   | "losers"
   | "halts"
   | "bidask"
@@ -58,6 +60,16 @@ type MoverRow = {
   lastSalePrice: string
   lastSaleChange: string
   change: string
+  volume?: string
+}
+
+type VolumeGainerRow = {
+  symbol: string
+  name?: string
+  price: number
+  changePct: number
+  volume: number
+  lastSaleChange?: string
 }
 
 type StocktwitsItem = {
@@ -168,6 +180,8 @@ const adsenseSlots: Partial<Record<string, string | undefined>> = {
   "dashboard-in-feed": import.meta.env.VITE_ADSENSE_SLOT_DASHBOARD_IN_FEED,
   "gainers-top": import.meta.env.VITE_ADSENSE_SLOT_GAINERS_TOP,
   "gainers-bottom": import.meta.env.VITE_ADSENSE_SLOT_GAINERS_BOTTOM,
+  "volume-gainers-top": import.meta.env.VITE_ADSENSE_SLOT_VOLUME_GAINERS_TOP,
+  "volume-gainers-bottom": import.meta.env.VITE_ADSENSE_SLOT_VOLUME_GAINERS_BOTTOM,
   "losers-top": import.meta.env.VITE_ADSENSE_SLOT_LOSERS_TOP,
   "losers-bottom": import.meta.env.VITE_ADSENSE_SLOT_LOSERS_BOTTOM,
   "pre-alerts-top": import.meta.env.VITE_ADSENSE_SLOT_PRE_ALERTS_TOP,
@@ -212,6 +226,13 @@ const screens: Screen[] = [
     description: "Top NASDAQ stocks with the strongest upside moves.",
     icon: TrendingUp,
     path: "/gainers",
+  },
+  {
+    id: "volumegainers",
+    label: "Volume Gainers",
+    description: "High-volume NASDAQ movers filtered by price, change, and liquidity.",
+    icon: Volume2,
+    path: "/volume-gainers",
   },
   {
     id: "losers",
@@ -312,6 +333,7 @@ function RocketScreeners() {
       }
     : (screens.find((screen) => screen.id === activeScreen) ?? screens[0])
   const gainers = useMovers("gainers", refreshSeconds)
+  const volumeGainers = useVolumeGainers(refreshSeconds)
   const losers = useMovers("losers", refreshSeconds)
   const alerts = useAlerts(refreshSeconds)
   const halts = useHalts(refreshSeconds)
@@ -326,6 +348,7 @@ function RocketScreeners() {
   const runningBidAskCount = bidAskMonitors.filter((monitor) => monitor.isRunning).length
 
   useQueryLogger("Gainers", gainers, setRequestLogs)
+  useQueryLogger("Volume Gainers", volumeGainers, setRequestLogs)
   useQueryLogger("Losers", losers, setRequestLogs)
   useQueryLogger("Alerts", alerts, setRequestLogs)
   useQueryLogger("Halts", halts, setRequestLogs)
@@ -337,6 +360,16 @@ function RocketScreeners() {
     getMessage: (row) => `${row.symbol} entered Gainers: ${row.change} | Price ${row.lastSalePrice}`,
     rows: gainers.data,
     screen: "gainers",
+    setEventCounts,
+    sonnerEnabled: sonnerNotificationsEnabled,
+    systemEnabled: systemNotificationsEnabled,
+  })
+  useNewRowsNotification({
+    getKey: (row) => row.symbol,
+    getMessage: (row) =>
+      `${row.symbol} entered Volume Gainers: ${formatTitlePercent(row.changePct)} | Price $${row.price.toFixed(2)} | Vol ${formatCompact(row.volume)}`,
+    rows: volumeGainers.data,
+    screen: "volumegainers",
     setEventCounts,
     sonnerEnabled: sonnerNotificationsEnabled,
     systemEnabled: systemNotificationsEnabled,
@@ -451,6 +484,7 @@ function RocketScreeners() {
                 preAlertRows={preAlertRows}
                 refreshSeconds={refreshSeconds}
                 runnerAlertRows={runnerAlertRows}
+                volumeGainers={volumeGainers}
               />
             }
             path="/"
@@ -478,6 +512,7 @@ function RocketScreeners() {
             path="/alerts-runner"
           />
           <Route element={<MoversScreen kind="gainers" query={gainers} />} path="/gainers" />
+          <Route element={<VolumeGainersScreen query={volumeGainers} />} path="/volume-gainers" />
           <Route element={<MoversScreen kind="losers" query={losers} />} path="/losers" />
           <Route element={<HaltsScreen query={halts} />} path="/halts" />
           <Route
@@ -613,6 +648,7 @@ function Dashboard({
   preAlertRows,
   refreshSeconds,
   runnerAlertRows,
+  volumeGainers,
 }: {
   alerts: UseQueryResult<AlertRow[], Error>
   gainers: UseQueryResult<MoverRow[], Error>
@@ -621,12 +657,14 @@ function Dashboard({
   preAlertRows: AlertRow[]
   refreshSeconds: number
   runnerAlertRows: AlertRow[]
+  volumeGainers: UseQueryResult<VolumeGainerRow[], Error>
 }) {
   return (
     <div className="dashboard-grid">
       <MetricCard label="Pre-Alerts" note="Early breakout watch" tone="violet" value={preAlertRows.length} />
       <MetricCard label="Alerts-Runner" note="RVOL + HOD" tone="cyan" value={runnerAlertRows.length} />
       <MetricCard label="Gainers" note="Nasdaq top 10" tone="green" value={gainers.data?.length ?? 0} />
+      <MetricCard label="Volume Gainers" note="Vol > 1M + positive" tone="cyan" value={volumeGainers.data?.length ?? 0} />
       <MetricCard label="Halts" note="Nasdaq Trader" tone="amber" value={halts.data?.length ?? 0} />
 
       <AdSlot format="leaderboard" label="Top dashboard ad" placement="dashboard-top" />
@@ -859,6 +897,49 @@ function MoversScreen({ kind, query }: { kind: MoverKind; query: UseQueryResult<
         </section>
       </div>
       <AdSlot format="rectangle" label={`${kind} bottom ad`} placement={`${kind}-bottom`} />
+    </div>
+  )
+}
+
+function VolumeGainersScreen({ query }: { query: UseQueryResult<VolumeGainerRow[], Error> }) {
+  return (
+    <div className="route-stack">
+      <AdSlot format="leaderboard" label="volume gainers top ad" placement="volume-gainers-top" />
+      <section className="panel wide">
+        <PanelTitle
+          title="Volume Gainers"
+          subtitle="Most active NASDAQ names filtered by price, positive change, and volume."
+        />
+        <ScreenStatus error={query.error} isLoading={query.isLoading} />
+        <div className="filter-pills">
+          <span>Price $0.50 - $20</span>
+          <span>Change &gt; 3%</span>
+          <span>Volume &gt; 1M</span>
+          <span>Sorted by volume</span>
+        </div>
+        <div className="data-table volume-gainers-table">
+          <div className="table-head">
+            <span>Ticker</span>
+            <span>Price</span>
+            <span>% Today</span>
+            <span>Volume</span>
+            <span>Name</span>
+          </div>
+          <div className="table-body">
+            {query.data?.map((row) => (
+              <div className="table-row" key={row.symbol}>
+                <strong>{row.symbol}</strong>
+                <span>${row.price.toFixed(2)}</span>
+                <span className="positive">{formatTitlePercent(row.changePct)}</span>
+                <span>{formatCompact(row.volume)}</span>
+                <span>{row.name ?? "-"}</span>
+              </div>
+            ))}
+            {!query.data?.length && <EmptyInline text="No volume gainers match the filters right now." />}
+          </div>
+        </div>
+      </section>
+      <AdSlot format="rectangle" label="volume gainers bottom ad" placement="volume-gainers-bottom" />
     </div>
   )
 }
@@ -1668,6 +1749,38 @@ function useMovers(kind: MoverKind, refreshSeconds: number): UseQueryResult<Move
           : json.data?.STOCKS?.MostDeclined?.table?.rows
 
       return (rows ?? []).slice(0, 10)
+    },
+    refetchInterval: refreshSeconds * 1000,
+    refetchIntervalInBackground: true,
+  })
+}
+
+function useVolumeGainers(refreshSeconds: number): UseQueryResult<VolumeGainerRow[], Error> {
+  return useQuery<VolumeGainerRow[], Error>({
+    queryKey: ["volume-gainers"],
+    queryFn: async () => {
+      const json = await fetchJson<{
+        data?: {
+          STOCKS?: {
+            MostActiveByShareVolume?: { table?: { rows?: MoverRow[] } }
+          }
+        }
+      }>(marketMoversUrl)
+
+      return (json.data?.STOCKS?.MostActiveByShareVolume?.table?.rows ?? [])
+        .map((row) => ({
+          symbol: row.symbol,
+          name: row.name,
+          price: parseMarketNumber(row.lastSalePrice),
+          changePct: parseMarketNumber(row.change),
+          volume: parseMarketNumber(row.volume),
+          lastSaleChange: row.lastSaleChange,
+        }))
+        .filter((row) => row.price >= 0.5 && row.price <= 20)
+        .filter((row) => row.changePct > 3)
+        .filter((row) => row.volume > 1000000)
+        .sort((a, b) => b.volume - a.volume)
+        .slice(0, 30)
     },
     refetchInterval: refreshSeconds * 1000,
     refetchIntervalInBackground: true,

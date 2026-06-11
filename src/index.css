@@ -691,6 +691,12 @@ h2 {
   min-width: 620px;
 }
 
+.volume-gainers-table .table-head,
+.volume-gainers-table .table-row {
+  grid-template-columns: 0.75fr 0.75fr 0.8fr 0.9fr 2fr;
+  min-width: 660px;
+}
+
 .appeared-table .table-head,
 .appeared-table .table-row {
   grid-template-columns: 1.5fr 0.7fr 0.8fr 0.7fr;
@@ -746,6 +752,22 @@ h2 {
 .mode.alert {
   background: color-mix(in oklch, #06b6d4, transparent 78%);
   color: #06b6d4;
+}
+
+.filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.filter-pills span {
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .bidask-tabs {
