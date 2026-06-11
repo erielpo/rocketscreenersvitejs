@@ -105,6 +105,7 @@ type BidAskSnapshot = {
   time: string
   price: number
   diffPct?: number
+  marketChangePct?: number
   status: "PRIMER" | "SUBE" | "BAJA" | "ESTABLE"
   volume: number
   volumeChangePct?: number
@@ -1214,7 +1215,8 @@ function StockMonitorScreen({
     }
 
     const diffPct = ((latest.price - reference) / reference) * 100
-    document.title = `${symbol} ${formatTitlePercent(diffPct)} ${latest.price.toFixed(2)} ${formatTitleNumber(reference)}`
+    const marketChange = latest.marketChangePct === undefined ? "-" : formatTitlePercent(latest.marketChangePct)
+    document.title = `${symbol} ${formatTitlePercent(diffPct)} ${latest.price.toFixed(2)} ${formatTitleNumber(reference)} ${marketChange}`
   }, [latest, monitor.draftReference, monitor.reference, monitor.symbol, ticker])
 
   useEffect(() => {
@@ -1317,6 +1319,9 @@ function StockMonitorScreen({
           <span>Price: {latest ? `$${latest.price.toFixed(2)}` : "-"}</span>
           <span className={latest?.diffPct && latest.diffPct >= 0 ? "positive" : "negative"}>
             Delta: {latest?.diffPct === undefined ? "-" : `${latest.diffPct.toFixed(2)}%`}
+          </span>
+          <span className={(latest?.marketChangePct ?? 0) >= 0 ? "positive" : "negative"}>
+            Market today: {latest?.marketChangePct === undefined ? "-" : `${latest.marketChangePct.toFixed(2)}%`}
           </span>
           <span>Force: {latest?.forceIndex?.toFixed(2) ?? "-"}</span>
         </div>
@@ -1795,16 +1800,19 @@ function useBidAskMonitor(
     queryKey: ["bidask-monitor", symbol, reference, isRunning],
     queryFn: async () => {
       const json = await fetchJson<{
-        data?: { primaryData?: { lastSalePrice?: string; volume?: string } }
+        data?: { primaryData?: { lastSalePrice?: string; percentageChange?: string; volume?: string } }
       }>(`/nasdaq/api/quote/${symbol}/info?assetclass=stocks`)
 
       const price = parseMarketNumber(json.data?.primaryData?.lastSalePrice)
+      const rawMarketChange = json.data?.primaryData?.percentageChange
+      const marketChangePct =
+        rawMarketChange && rawMarketChange !== "N/A" ? parseMarketNumber(rawMarketChange) : undefined
       const volume = parseMarketNumber(json.data?.primaryData?.volume)
       if (!price) {
         return null
       }
 
-      return createBidAskSnapshot(price, volume, reference, setHistory)
+      return createBidAskSnapshot(price, volume, reference, setHistory, marketChangePct)
     },
     refetchInterval: refreshSeconds * 1000,
     refetchIntervalInBackground: true,
@@ -2074,6 +2082,7 @@ function createBidAskSnapshot(
   volume: number,
   reference: number | undefined,
   setHistory: Dispatch<SetStateAction<BidAskSnapshot[]>>,
+  marketChangePct?: number,
 ) {
   const time = new Date().toLocaleString()
   let created: BidAskSnapshot | null = null
@@ -2100,6 +2109,7 @@ function createBidAskSnapshot(
       time,
       price,
       diffPct,
+      marketChangePct,
       status,
       volume,
       volumeChangePct,
