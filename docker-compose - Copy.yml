@@ -23,18 +23,12 @@ services:
         VITE_ADSENSE_SLOT_STOCK_TOP: ${VITE_ADSENSE_SLOT_STOCK_TOP:-}
         VITE_ADSENSE_SLOT_STOCK_BOTTOM: ${VITE_ADSENSE_SLOT_STOCK_BOTTOM:-}
     image: rocketscreenersvitejs:latest
-    pull_policy: build
+    container_name: rocketscreeners
     restart: unless-stopped
     expose:
       - "80"
     networks:
       - proxy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=proxy"
-      - "traefik.http.routers.rocketscreeners.rule=Host(`rocket.stockgoing.com`)"
-      - "traefik.http.routers.rocketscreeners.entrypoints=web"
-      - "traefik.http.services.rocketscreeners.loadbalancer.server.port=80"
 
 networks:
   proxy:
