@@ -1211,17 +1211,20 @@ function StockMonitorScreen({
 
     if (!latest) {
       document.title = `${symbol} Stock Monitor`
+      setFavicon("/vite.png")
       return
     }
 
     const diffPct = ((latest.price - reference) / reference) * 100
     const marketChange = latest.marketChangePct === undefined ? "-" : formatTitlePercent(latest.marketChangePct)
     document.title = `${symbol} ${formatTitlePercent(diffPct)} ${latest.price.toFixed(2)} ${formatTitleNumber(reference)} ${marketChange}`
+    setFavicon((latest.marketChangePct ?? 0) >= 0 ? "/up.png" : "/down.png")
   }, [latest, monitor.draftReference, monitor.reference, monitor.symbol, ticker])
 
   useEffect(() => {
     return () => {
       document.title = "StockGoing"
+      setFavicon("/vite.png")
     }
   }, [])
 
@@ -2212,6 +2215,18 @@ function formatTitlePercent(value: number) {
 
 function formatTitleNumber(value: number) {
   return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")
+}
+
+function setFavicon(href: string) {
+  let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+  if (!link) {
+    link = document.createElement("link")
+    link.rel = "icon"
+    document.head.appendChild(link)
+  }
+
+  link.type = "image/png"
+  link.href = href
 }
 
 function readXml(item: Element, tagName: string) {
