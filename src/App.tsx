@@ -1747,6 +1747,7 @@ function useAlerts(refreshSeconds: number): UseQueryResult<AlertRow[], Error> {
       return enriched.filter((row): row is AlertRow => row !== null).sort((a, b) => b.rvol - a.rvol)
     },
     refetchInterval: refreshSeconds * 1000,
+    refetchIntervalInBackground: true,
   })
 }
 
@@ -1806,6 +1807,7 @@ function useBidAskMonitor(
       return createBidAskSnapshot(price, volume, reference, setHistory)
     },
     refetchInterval: refreshSeconds * 1000,
+    refetchIntervalInBackground: true,
   })
 }
 
