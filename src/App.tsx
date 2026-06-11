@@ -60,6 +60,7 @@ type MoverRow = {
   lastSalePrice: string
   lastSaleChange: string
   change: string
+  deltaIndicator?: string
   volume?: string
 }
 
@@ -68,6 +69,7 @@ type VolumeGainerRow = {
   name?: string
   price: number
   changePct: number
+  direction?: string
   volume: number
   lastSaleChange?: string
 }
@@ -229,8 +231,8 @@ const screens: Screen[] = [
   },
   {
     id: "volumegainers",
-    label: "Volume Gainers",
-    description: "High-volume NASDAQ movers filtered by price, change, and liquidity.",
+    label: "Volume Movers",
+    description: "High-volume NASDAQ movers filtered by price and liquidity.",
     icon: Volume2,
     path: "/volume-gainers",
   },
@@ -367,7 +369,7 @@ function RocketScreeners() {
   useNewRowsNotification({
     getKey: (row) => row.symbol,
     getMessage: (row) =>
-      `${row.symbol} entered Volume Gainers: ${formatTitlePercent(row.changePct)} | Price $${row.price.toFixed(2)} | Vol ${formatCompact(row.volume)}`,
+      `${row.symbol} entered Volume Movers: ${formatMoverDirection(row.direction)} | Price $${row.price.toFixed(4)} | Vol ${formatCompact(row.volume)}`,
     rows: volumeGainers.data,
     screen: "volumegainers",
     setEventCounts,
@@ -664,7 +666,7 @@ function Dashboard({
       <MetricCard label="Pre-Alerts" note="Early breakout watch" tone="violet" value={preAlertRows.length} />
       <MetricCard label="Alerts-Runner" note="RVOL + HOD" tone="cyan" value={runnerAlertRows.length} />
       <MetricCard label="Gainers" note="Nasdaq top 10" tone="green" value={gainers.data?.length ?? 0} />
-      <MetricCard label="Volume Gainers" note="Vol > 1M + positive" tone="cyan" value={volumeGainers.data?.length ?? 0} />
+      <MetricCard label="Volume Movers" note="Vol > 1M" tone="cyan" value={volumeGainers.data?.length ?? 0} />
       <MetricCard label="Halts" note="Nasdaq Trader" tone="amber" value={halts.data?.length ?? 0} />
 
       <AdSlot format="leaderboard" label="Top dashboard ad" placement="dashboard-top" />
@@ -907,13 +909,12 @@ function VolumeGainersScreen({ query }: { query: UseQueryResult<VolumeGainerRow[
       <AdSlot format="leaderboard" label="volume gainers top ad" placement="volume-gainers-top" />
       <section className="panel wide">
         <PanelTitle
-          title="Volume Gainers"
-          subtitle="Most active NASDAQ names filtered by price, positive change, and volume."
+          title="Volume Movers"
+          subtitle="Most active NASDAQ names filtered by price and volume, regardless of direction."
         />
         <ScreenStatus error={query.error} isLoading={query.isLoading} />
         <div className="filter-pills">
           <span>Price $0 - $50</span>
-          <span>Change &gt; 3%</span>
           <span>Volume &gt; 1M</span>
           <span>Sorted by volume</span>
         </div>
@@ -921,7 +922,8 @@ function VolumeGainersScreen({ query }: { query: UseQueryResult<VolumeGainerRow[
           <div className="table-head">
             <span>Ticker</span>
             <span>Price</span>
-            <span>% Today</span>
+            <span>Direction</span>
+            <span>Delta</span>
             <span>Volume</span>
             <span>Name</span>
           </div>
@@ -929,13 +931,18 @@ function VolumeGainersScreen({ query }: { query: UseQueryResult<VolumeGainerRow[
             {query.data?.map((row) => (
               <div className="table-row" key={row.symbol}>
                 <strong>{row.symbol}</strong>
-                <span>${row.price.toFixed(2)}</span>
-                <span className="positive">{formatTitlePercent(row.changePct)}</span>
+                <span>${row.price < 1 ? row.price.toFixed(4) : row.price.toFixed(2)}</span>
+                <span className={row.direction === "up" ? "positive" : row.direction === "down" ? "negative" : ""}>
+                  {formatMoverDirection(row.direction)}
+                </span>
+                <span className={(row.lastSaleChange ?? "").startsWith("-") ? "negative" : "positive"}>
+                  {row.lastSaleChange ?? "-"}
+                </span>
                 <span>{formatCompact(row.volume)}</span>
                 <span>{row.name ?? "-"}</span>
               </div>
             ))}
-            {!query.data?.length && <EmptyInline text="No volume gainers match the filters right now." />}
+            {!query.data?.length && <EmptyInline text="No volume movers match the filters right now." />}
           </div>
         </div>
       </section>
@@ -1773,11 +1780,11 @@ function useVolumeGainers(refreshSeconds: number): UseQueryResult<VolumeGainerRo
           name: row.name,
           price: parseMarketNumber(row.lastSalePrice),
           changePct: parseMarketNumber(row.change),
-          volume: parseMarketNumber(row.volume),
+          direction: row.deltaIndicator,
+          volume: parseMarketNumber(row.volume ?? row.change),
           lastSaleChange: row.lastSaleChange,
         }))
         .filter((row) => row.price > 0 && row.price <= 50)
-        .filter((row) => row.changePct > 3)
         .filter((row) => row.volume > 1000000)
         .sort((a, b) => b.volume - a.volume)
         .slice(0, 30)
@@ -2307,6 +2314,12 @@ function formatBidAskStatus(status: BidAskSnapshot["status"]) {
   }
 
   return labels[status]
+}
+
+function formatMoverDirection(direction?: string) {
+  if (direction === "up") return "UP"
+  if (direction === "down") return "DOWN"
+  return "-"
 }
 
 function formatCompact(value?: number) {

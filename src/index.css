@@ -693,8 +693,8 @@ h2 {
 
 .volume-gainers-table .table-head,
 .volume-gainers-table .table-row {
-  grid-template-columns: 0.75fr 0.75fr 0.8fr 0.9fr 2fr;
-  min-width: 660px;
+  grid-template-columns: 0.75fr 0.75fr 0.7fr 0.7fr 0.9fr 2fr;
+  min-width: 740px;
 }
 
 .appeared-table .table-head,
