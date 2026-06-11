@@ -912,7 +912,7 @@ function VolumeGainersScreen({ query }: { query: UseQueryResult<VolumeGainerRow[
         />
         <ScreenStatus error={query.error} isLoading={query.isLoading} />
         <div className="filter-pills">
-          <span>Price $0.50 - $20</span>
+          <span>Price $0 - $50</span>
           <span>Change &gt; 3%</span>
           <span>Volume &gt; 1M</span>
           <span>Sorted by volume</span>
@@ -1776,7 +1776,7 @@ function useVolumeGainers(refreshSeconds: number): UseQueryResult<VolumeGainerRo
           volume: parseMarketNumber(row.volume),
           lastSaleChange: row.lastSaleChange,
         }))
-        .filter((row) => row.price >= 0.5 && row.price <= 20)
+        .filter((row) => row.price > 0 && row.price <= 50)
         .filter((row) => row.changePct > 3)
         .filter((row) => row.volume > 1000000)
         .sort((a, b) => b.volume - a.volume)
