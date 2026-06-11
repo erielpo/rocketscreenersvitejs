@@ -26,7 +26,7 @@ services:
     pull_policy: build
     restart: unless-stopped
     deploy:
-      replicas: 3
+      replicas: 10
     expose:
       - "80"
     networks:
