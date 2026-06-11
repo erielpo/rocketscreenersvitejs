@@ -1205,6 +1205,25 @@ function StockMonitorScreen({
   useQueryLogger(`Stock ${ticker}`, query, setLogs)
 
   useEffect(() => {
+    const symbol = monitor.symbol || ticker
+    const reference = (monitor.reference ?? parseMarketNumber(monitor.draftReference)) || 1
+
+    if (!latest) {
+      document.title = `${symbol} Stock Monitor`
+      return
+    }
+
+    const diffPct = ((latest.price - reference) / reference) * 100
+    document.title = `${symbol} ${formatTitlePercent(diffPct)} ${latest.price.toFixed(2)} ${formatTitleNumber(reference)}`
+  }, [latest, monitor.draftReference, monitor.reference, monitor.symbol, ticker])
+
+  useEffect(() => {
+    return () => {
+      document.title = "StockGoing"
+    }
+  }, [])
+
+  useEffect(() => {
     if (!query.data || query.data.status === "PRIMER") {
       return
     }
@@ -1360,6 +1379,13 @@ function ConfigurationScreen({
 }) {
   const [tab, setTab] = useState<"general" | "logs">("general")
   const [value, setValue] = useState(refreshSeconds)
+  const [notificationPermission, setNotificationPermission] = useState(getBrowserNotificationPermission())
+
+  useEffect(() => {
+    const refreshPermission = () => setNotificationPermission(getBrowserNotificationPermission())
+    window.addEventListener("focus", refreshPermission)
+    return () => window.removeEventListener("focus", refreshPermission)
+  }, [])
 
   return (
     <div className="route-stack">
@@ -1405,9 +1431,11 @@ function ConfigurationScreen({
             <label className="toggle-field">
               <input
                 checked={systemNotificationsEnabled}
+                disabled={notificationPermission === "unsupported" || notificationPermission === "denied"}
                 onChange={async (event) => {
                   if (event.target.checked) {
                     const ok = await requestBrowserNotifications()
+                    setNotificationPermission(getBrowserNotificationPermission())
                     setSystemNotificationsEnabled(ok)
                     if (ok) {
                       notify("Rocket Screeners", "System notifications are enabled.", {
@@ -1427,6 +1455,11 @@ function ConfigurationScreen({
               />
               <span>Enable system/browser notifications</span>
             </label>
+
+            <div className={`permission-card ${notificationPermission}`}>
+              <strong>Browser notification permission: {formatNotificationPermission(notificationPermission)}</strong>
+              <p>{getNotificationPermissionMessage(notificationPermission)}</p>
+            </div>
 
             <div className="settings-actions">
               <button className="primary-action" onClick={() => setRefreshSeconds(Math.max(3, value))} type="button">
@@ -2158,10 +2191,55 @@ function formatCompact(value?: number) {
   return value.toFixed(0)
 }
 
+function formatTitlePercent(value: number) {
+  const rounded = Math.round(value * 100) / 100
+  const formatted = Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(2)
+  return `${rounded > 0 ? "+" : ""}${formatted}%`
+}
+
+function formatTitleNumber(value: number) {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")
+}
+
 function readXml(item: Element, tagName: string) {
   return Array.from(item.getElementsByTagName("*"))
     .find((node) => node.localName === tagName)
     ?.textContent?.trim()
+}
+
+function getBrowserNotificationPermission() {
+  if (!("Notification" in window)) {
+    return "unsupported" as const
+  }
+
+  return Notification.permission
+}
+
+function formatNotificationPermission(permission: NotificationPermission | "unsupported") {
+  const labels: Record<NotificationPermission | "unsupported", string> = {
+    default: "Not requested",
+    denied: "Blocked",
+    granted: "Allowed",
+    unsupported: "Unsupported",
+  }
+
+  return labels[permission]
+}
+
+function getNotificationPermissionMessage(permission: NotificationPermission | "unsupported") {
+  if (permission === "granted") {
+    return "System notifications are allowed for this site."
+  }
+
+  if (permission === "denied") {
+    return "The browser has blocked notifications for this site. Click the lock/settings icon next to the URL and allow Notifications, then reload the page."
+  }
+
+  if (permission === "unsupported") {
+    return "This browser or environment does not support system notifications."
+  }
+
+  return "Enable the toggle to let the browser ask for notification permission."
 }
 
 async function requestBrowserNotifications() {

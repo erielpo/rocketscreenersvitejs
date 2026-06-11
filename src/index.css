@@ -890,6 +890,38 @@ h2 {
   height: 18px;
 }
 
+.permission-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.permission-card strong {
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.permission-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.permission-card.granted {
+  border-color: color-mix(in oklch, #22c55e, transparent 45%);
+  background: color-mix(in oklch, #22c55e, transparent 88%);
+}
+
+.permission-card.denied,
+.permission-card.unsupported {
+  border-color: color-mix(in oklch, #ef4444, transparent 45%);
+  background: color-mix(in oklch, #ef4444, transparent 88%);
+}
+
 @media (min-width: 720px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
